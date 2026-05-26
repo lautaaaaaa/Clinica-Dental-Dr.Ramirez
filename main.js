@@ -98,36 +98,49 @@
     var els = document.querySelectorAll("[data-count-to]");
     if (!els.length) return;
 
-    function animateCount(el, target) {
-      var start = 0;
+    var fired = [];
+
+    function animateCount(el) {
+      if (fired.indexOf(el) !== -1) return;
+      fired.push(el);
+
+      var target = parseInt(el.getAttribute("data-count-to"), 10);
+      var label = el.parentElement.querySelector(".about-stat-label");
+      var isStars = label && label.textContent.indexOf("Estrellas") !== -1;
+      var suffix = isStars ? "" : "+";
       var duration = 1600;
       var startTime = null;
-      var suffix = target >= 750 ? "+" : (el.parentElement.querySelector(".about-stat-label") &&
-        el.parentElement.querySelector(".about-stat-label").textContent.includes("Estrellas") ? "" : "+");
 
       function step(ts) {
         if (!startTime) startTime = ts;
         var progress = Math.min((ts - startTime) / duration, 1);
-        var eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
-        var current = Math.floor(eased * target);
-        el.textContent = current + (progress < 1 ? "" : suffix);
+        var eased = 1 - Math.pow(1 - progress, 3);
+        el.textContent = Math.floor(eased * target) + (progress < 1 ? "" : suffix);
         if (progress < 1) requestAnimationFrame(step);
         else el.textContent = target + suffix;
       }
       requestAnimationFrame(step);
     }
 
+    // Observer with low threshold so it fires as soon as element enters view
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (e) {
         if (e.isIntersecting) {
-          var target = parseInt(e.target.getAttribute("data-count-to"), 10);
-          animateCount(e.target, target);
+          animateCount(e.target);
           io.unobserve(e.target);
         }
       });
-    }, { threshold: 0.3 });
+    }, { threshold: 0.05 });
 
     els.forEach(function (el) { io.observe(el); });
+
+    // Safety net: after 2s check if any counter is still at 0 and is already in view
+    setTimeout(function () {
+      els.forEach(function (el) {
+        var rect = el.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) animateCount(el);
+      });
+    }, 2000);
   }
 
   /* ── 5. Calendar ── */
@@ -265,22 +278,3 @@
       ease: "power2.out",
       scrollTrigger: {
         trigger: "#servicios .services-grid",
-        start: "top 80%",
-      }
-    });
-
-    // Review cards stagger
-    gsap.from(".review-card", {
-      opacity: 0, y: 24, scale: 0.97,
-      stagger: 0.07,
-      duration: 0.6,
-      ease: "power2.out",
-      scrollTrigger: {
-        trigger: "#testimonios .reviews-grid",
-        start: "top 80%",
-      }
-    });
-  }
-
-  /* ── Run ── */
-  if
