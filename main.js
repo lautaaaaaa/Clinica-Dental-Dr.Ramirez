@@ -50,98 +50,94 @@
     }, { passive: true });
   }
 
-  /* ── 3. Scroll reveals (IntersectionObserver) ── */
+  /* ── 3. Scroll reveals + 4. Count-up — scroll-event based (CDN-safe) ── */
   function initReveals() {
-    var selectors = ".reveal, .reveal-left, .reveal-right";
-    var els = document.querySelectorAll(selectors);
-    if (!els.length) return;
+    var revealEls = Array.prototype.slice.call(
+      document.querySelectorAll(".reveal, .reveal-left, .reveal-right")
+    );
+    var counterEls = Array.prototype.slice.call(
+      document.querySelectorAll("[data-count-to]")
+    );
+    if (!revealEls.length && !counterEls.length) return;
 
-    var vh = window.innerHeight;
-
-    // Only animate elements below the fold — elements already visible get revealed instantly
-    els.forEach(function (el) {
-      var rect = el.getBoundingClientRect();
-      if (rect.top < vh * 0.92) {
-        // Already in view: show immediately, no animation needed
-        el.classList.add("is-visible");
-      } else {
-        // Below fold: hide and animate on scroll
-        el.classList.add("will-animate");
-      }
-    });
-
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) {
-          e.target.classList.remove("will-animate");
-          e.target.classList.add("is-visible");
-          io.unobserve(e.target);
-        }
-      });
-    }, { threshold: 0.04, rootMargin: "0px 0px 0px 0px" });
-
-    els.forEach(function (el) {
-      if (el.classList.contains("will-animate")) io.observe(el);
-    });
-
-    // Safety: force reveal everything at 5s
-    setTimeout(function () {
-      document.querySelectorAll(".will-animate").forEach(function (el) {
-        el.classList.remove("will-animate");
-        el.classList.add("is-visible");
-      });
-    }, 5000);
-  }
-
-  /* ── 4. Count-up numbers ── */
-  function initCounters() {
-    var els = document.querySelectorAll("[data-count-to]");
-    if (!els.length) return;
-
-    var fired = [];
+    var countFired = [];
 
     function animateCount(el) {
-      if (fired.indexOf(el) !== -1) return;
-      fired.push(el);
-
+      if (countFired.indexOf(el) !== -1) return;
+      countFired.push(el);
       var target = parseInt(el.getAttribute("data-count-to"), 10);
       var label = el.parentElement.querySelector(".about-stat-label");
-      var isStars = label && label.textContent.indexOf("Estrellas") !== -1;
-      var suffix = isStars ? "" : "+";
+      var suffix = (label && label.textContent.indexOf("Estrellas") !== -1) ? "" : "+";
       var duration = 1600;
       var startTime = null;
-
       function step(ts) {
         if (!startTime) startTime = ts;
-        var progress = Math.min((ts - startTime) / duration, 1);
-        var eased = 1 - Math.pow(1 - progress, 3);
-        el.textContent = Math.floor(eased * target) + (progress < 1 ? "" : suffix);
-        if (progress < 1) requestAnimationFrame(step);
+        var p = Math.min((ts - startTime) / duration, 1);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.floor(eased * target) + (p < 1 ? "" : suffix);
+        if (p < 1) requestAnimationFrame(step);
         else el.textContent = target + suffix;
       }
       requestAnimationFrame(step);
     }
 
-    // Observer with low threshold so it fires as soon as element enters view
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) {
-          animateCount(e.target);
-          io.unobserve(e.target);
-        }
-      });
-    }, { threshold: 0.05 });
+    function check() {
+      var vh = window.innerHeight;
 
-    els.forEach(function (el) { io.observe(el); });
-
-    // Safety net: after 2s check if any counter is still at 0 and is already in view
-    setTimeout(function () {
-      els.forEach(function (el) {
+      // Reveals
+      revealEls = revealEls.filter(function (el) {
         var rect = el.getBoundingClientRect();
-        if (rect.top < window.innerHeight && rect.bottom > 0) animateCount(el);
+        if (rect.top < vh * 0.93) {
+          el.classList.remove("will-animate");
+          el.classList.add("is-visible");
+          return false; // done, remove from list
+        }
+        return true;
       });
-    }, 2000);
+
+      // Counters
+      counterEls = counterEls.filter(function (el) {
+        var rect = el.getBoundingClientRect();
+        if (rect.top < vh * 0.93 && rect.bottom > 0) {
+          animateCount(el);
+          return false;
+        }
+        return true;
+      });
+
+      if (!revealEls.length && !counterEls.length) {
+        window.removeEventListener("scroll", check, { passive: true });
+      }
+    }
+
+    // Mark below-fold elements as will-animate
+    revealEls.forEach(function (el) {
+      var rect = el.getBoundingClientRect();
+      if (rect.top >= window.innerHeight * 0.93) {
+        el.classList.add("will-animate");
+      } else {
+        el.classList.add("is-visible");
+      }
+    });
+
+    window.addEventListener("scroll", check, { passive: true });
+
+    // Run immediately (catches elements already in viewport) + after short delay
+    check();
+    setTimeout(check, 300);
+    setTimeout(check, 800);
+
+    // Nuclear fallback: reveal everything at 4s no matter what
+    setTimeout(function () {
+      document.querySelectorAll(".will-animate").forEach(function (el) {
+        el.classList.remove("will-animate");
+        el.classList.add("is-visible");
+      });
+      counterEls.forEach(function (el) { animateCount(el); });
+    }, 4000);
   }
+
+  function initCounters() { /* handled inside initReveals */ }
 
   /* ── 5. Calendar ── */
   function initCalendar() {
@@ -278,3 +274,12 @@
       ease: "power2.out",
       scrollTrigger: {
         trigger: "#servicios .services-grid",
+        start: "top 80%",
+      }
+    });
+
+    // Review cards stagger
+    gsap.from(".review-card", {
+      opacity: 0, y: 24, scale: 0.97,
+      stagger: 0.07,
+      dura
